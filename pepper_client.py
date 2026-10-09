@@ -126,13 +126,13 @@ class PepperClient:
         request_delay: float = 2.0,
         timeout: float = 60.0,
         max_challenge_rounds: int = 4,
-        proxy: str | None = None,
+        pepper_proxy: str | None = None,
         captcha_api_key: str | None = None,
     ) -> None:
         self.session = Session(impersonate="chrome124")
-        if proxy:
-            self.session.proxies = {"https://": proxy, "http://": proxy}
-            log.info("using proxy: %s", proxy)
+        if pepper_proxy:
+            self.session.proxies = {"https://": pepper_proxy, "http://": pepper_proxy}
+            log.info("using proxy for pepper.ru: %s", pepper_proxy)
         self.session.headers.update({
             "User-Agent": _UA,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",

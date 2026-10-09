@@ -65,7 +65,8 @@ class Config:
     # Сеть
     request_delay: float = _env_float("PEPPER_REQUEST_DELAY", 2.0)  # пауза между запросами
     timeout: float = _env_float("PEPPER_TIMEOUT", 30.0)
-    proxy: str = os.environ.get("PEPPER_PROXY", "")  # опциональный прокси для доступа к pepper.ru
+    pepper_proxy: str = os.environ.get("PEPPER_PROXY", "")  # прокси для pepper.ru (пусто для РФ сервера)
+    telegram_proxy: str = os.environ.get("PEPPER_TG_PROXY", "")  # прокси для Telegram API (обязателен в РФ)
     # 2captcha для обхода Yandex SmartCaptcha
     captcha_api_key: str = os.environ.get("PEPPER_2CAPTCHA_KEY", "")
     # Бот: chat_id админа для демо/диагностики

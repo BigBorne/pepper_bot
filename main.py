@@ -215,7 +215,7 @@ async def main() -> int:
         log.error("нет PEPPER_TG_ADMIN_IDS: задай Telegram user ID администраторов")
         return 2
 
-    tg = TelegramPoster(cfg.tg_token, cfg.tg_chat) if cfg.telegram_enabled else None
+    tg = TelegramPoster(cfg.tg_token, cfg.tg_chat, proxy=cfg.telegram_proxy) if cfg.telegram_enabled else None
     store = Store(cfg.db_path)
 
     stop = asyncio.Event()
@@ -233,7 +233,7 @@ async def main() -> int:
     client = PepperClient(
         request_delay=cfg.request_delay,
         timeout=cfg.timeout,
-        proxy=cfg.proxy,
+        pepper_proxy=cfg.pepper_proxy,
         captcha_api_key=cfg.captcha_api_key,
     )
 

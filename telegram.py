@@ -75,14 +75,20 @@ def _ikb_review(deal_id: int, product_url: str | None) -> dict:
 
 
 class TelegramPoster:
-    def __init__(self, token: str, chat_id: str, timeout: float = 30.0) -> None:
+    def __init__(self, token: str, chat_id: str, timeout: float = 30.0, proxy: str | None = None) -> None:
         self.token = token
         self.chat_id = chat_id
         self.timeout = timeout
+        self.proxy = proxy
 
     def _call(self, method: str, retries: int = 2, **kwargs) -> dict:
         url = API.format(token=self.token, method=method)
         request_timeout = kwargs.pop("request_timeout", self.timeout)
+
+        # Добавить прокси если настроен (для обхода блокировки Telegram в РФ)
+        if self.proxy:
+            kwargs.setdefault("proxies", {"http://": self.proxy, "https://": self.proxy})
+
         for attempt in range(retries + 1):
             try:
                 r = cr.post(url, timeout=request_timeout, **kwargs)
