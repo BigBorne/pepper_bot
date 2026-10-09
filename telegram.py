@@ -14,6 +14,7 @@ import logging
 import base64
 import time
 
+from curl_cffi import CurlMime
 from curl_cffi import requests as cr
 
 log = logging.getLogger("pepper.tg")
@@ -87,17 +88,35 @@ class TelegramPoster:
 
         # Добавить прокси если настроен (для обхода блокировки Telegram в РФ)
         if self.proxy:
-            kwargs.setdefault("proxies", {"http://": self.proxy, "https://": self.proxy})
+            # curl_cffi accepts a single HTTP CONNECT proxy via ``proxy``.
+            # Passing a requests-style ``proxies`` mapping can silently route
+            # HTTPS requests incorrectly in some curl_cffi versions.
+            kwargs.setdefault("proxy", self.proxy)
+
+        multipart_parts = kwargs.pop("multipart", None)
 
         for attempt in range(retries + 1):
+            multipart = None
             try:
-                r = cr.post(url, timeout=request_timeout, **kwargs)
+                if multipart_parts is not None:
+                    # curl_cffi intentionally does not implement requests' ``files``
+                    # argument.  Multipart forms must be sent as CurlMime.
+                    multipart = self._multipart(multipart_parts)
+                    r = cr.post(url, multipart=multipart, timeout=request_timeout, **kwargs)
+                else:
+                    r = cr.post(url, timeout=request_timeout, **kwargs)
             except Exception:
+                if multipart is not None:
+                    multipart.close()
                 if attempt == retries:
                     raise
                 time.sleep(1.5 * (attempt + 1))
                 continue
-            data = r.json()
+            try:
+                data = r.json()
+            finally:
+                if multipart is not None:
+                    multipart.close()
             if data.get("ok"):
                 return data
             # Telegram считает повторное редактирование тем же сообщением
@@ -113,6 +132,32 @@ class TelegramPoster:
                 continue
             raise RuntimeError(f"TG {method}: {data.get('error_code')} {data.get('description')}")
         raise RuntimeError(f"TG {method}: retries exhausted")
+
+    @staticmethod
+    def _multipart(parts: dict) -> CurlMime:
+        """Build a curl_cffi multipart form.
+
+        Values are either plain form values or ``(filename, data, mime_type)``
+        for uploaded files.  Keeping construction here avoids accidentally
+        passing the unsupported ``files=`` argument to curl_cffi.
+        """
+        form = CurlMime()
+        for name, value in parts.items():
+            if isinstance(value, tuple) and len(value) == 3:
+                filename, data, content_type = value
+                form.addpart(
+                    name=name,
+                    filename=filename,
+                    content_type=content_type,
+                    data=data,
+                )
+            else:
+                if isinstance(value, tuple):
+                    value = value[-1]
+                if not isinstance(value, bytes):
+                    value = str(value).encode("utf-8")
+                form.addpart(name=name, content_type="text/plain", data=value)
+        return form
 
     # ------------------------------------------------------------------ #
     # Постинг в канал
@@ -258,9 +303,9 @@ class TelegramPoster:
              **({"caption": caption, "parse_mode": "HTML"} if i == 0 else {})}
             for i in range(len(photos))
         ]
-        multipart_data = {"chat_id": chat_id, "media": _json.dumps(media)}
-        for i, blob in enumerate(photos):
-            multipart_data[f"photo{i}"] = (f"p{i}.jpg", blob, "image/jpeg")
+        multipart_data = {f"photo{i}": (f"p{i}.jpg", blob, "image/jpeg") for i, blob in enumerate(photos)}
+        multipart_data["media"] = _json.dumps(media)
+        multipart_data["chat_id"] = str(chat_id)
         self._call("sendMediaGroup", multipart=multipart_data)
         self.send_bot_message(chat_id, "Что показать по этой подсказке? 👇", reply_markup=_ikb_card())
 

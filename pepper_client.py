@@ -178,7 +178,17 @@ class PepperClient:
             self._throttle()
             r = self.session.get(url, headers=self._headers(), timeout=self.timeout)
 
-            # проверка на Yandex SmartCaptcha (редирект на showcaptcha)
+            # Сначала проверяем встроенный ycch-челлендж. Его URL часто
+            # содержит ``showcaptcha``, но это НЕ SmartCaptcha: это страница
+            # с PoW, в ней нет sitekey для 2captcha.
+            if _SSR_DATA_RE.search(r.text) and _CHALLENGE_MARK in r.text:
+                html = self._solve_challenge(r.text, referer=url)
+                if _CHALLENGE_MARK not in html:
+                    return html
+                continue
+
+            # Отдельный случай — настоящая Yandex SmartCaptcha. Только здесь
+            # имеет смысл обращаться к 2captcha.
             if "showcaptcha" in r.url or "x-yandex-captcha" in r.headers:
                 if self.captcha_solver:
                     log.info("yandex captcha detected, solving via 2captcha")
@@ -190,10 +200,12 @@ class PepperClient:
                     raise PepperBlocked(f"captcha required: {url}")
 
             if _CHALLENGE_MARK not in r.text:
+                if r.status_code >= 400:
+                    raise PepperBlocked(f"pepper returned HTTP {r.status_code}: {url}")
                 return r.text
-            html = self._solve_challenge(r.text, referer=url)
-            if _CHALLENGE_MARK not in html:
-                return html
+            # Не возвращаем непонятную страницу проверки как будто это лента.
+            # Иначе feed_cards молча отдаёт пустой результат и причина теряется.
+            raise PepperBlocked(f"unrecognised pepper verification page: {url}")
         raise PepperBlocked(f"challenge not passed after {self.max_challenge_rounds} rounds: {url}")
 
     def _solve_challenge(self, challenge_html: str, referer: str) -> str:
@@ -229,7 +241,7 @@ class PepperClient:
         """Решить Yandex SmartCaptcha через 2captcha."""
         # сохранить HTML для отладки
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, dir='/tmp') as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
             f.write(html)
             log.info("captcha page saved to %s", f.name)
 
@@ -239,7 +251,15 @@ class PepperClient:
             return False
 
         log.info("extracted sitekey: %s", sitekey)
-        token = self.captcha_solver.solve_yandex_smart(sitekey, BASE)
+        cookie_header = "; ".join(
+            f"{cookie.name}={cookie.value}" for cookie in self.session.cookies
+        )
+        token = self.captcha_solver.solve_yandex_smart(
+            sitekey,
+            page_url,
+            user_agent=_UA,
+            cookies=cookie_header or None,
+        )
         if not token:
             log.error("failed to solve captcha")
             return False
@@ -263,6 +283,7 @@ class PepperClient:
 
     def feed_cards(self, feeds: Iterable[str], max_pages: int = 1) -> list[DealCard]:
         cards: dict[int, DealCard] = {}
+        errors: list[tuple[str, Exception]] = []
         for feed in feeds:
             page_url = feed
             for page in range(max(1, max_pages)):
@@ -270,6 +291,7 @@ class PepperClient:
                     html = self.get(page_url)
                 except Exception as exc:  # одна лента упала — тянем остальные
                     log.warning("feed %s page %s failed: %s", feed, page + 1, exc)
+                    errors.append((feed, exc))
                     break
                 tree = HTMLParser(html)
                 for node in tree.css("article"):
@@ -285,6 +307,9 @@ class PepperClient:
                 if next_link is None or not next_link.attributes.get("href"):
                     break
                 page_url = urljoin(page_url, next_link.attributes["href"])
+        if not cards and errors:
+            failed = ", ".join(feed for feed, _ in errors)
+            raise PepperBlocked(f"all Pepper feeds failed ({failed}): {errors[-1][1]}")
         return sorted(cards.values(), key=lambda c: c.deal_id)
 
     def _parse_card(self, node) -> DealCard | None:

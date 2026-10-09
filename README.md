@@ -91,6 +91,7 @@ cp .env.example .env             # токен бота, chat_id канала, ch
 | `PEPPER_DB_PATH`       | `pepper_seen.sqlite3`| файл базы (посты + каталог промокодов)      |
 | `PEPPER_REQUEST_DELAY` | `2.0`                | пауза между HTTP-запросами, сек             |
 | `PEPPER_PROXY`         | —                    | HTTP/HTTPS прокси (optional)                |
+| `PEPPER_TG_PROXY`      | —                    | прокси для Telegram API (нужен, если Telegram недоступен с сервера) |
 | `PEPPER_2CAPTCHA_KEY`  | —                    | API ключ 2captcha для обхода Yandex капчи   |
 
 ### Обход Yandex SmartCaptcha
@@ -136,8 +137,9 @@ python main.py --demo        # тестовая карточка-подсказ�
 
 1. `GET /deals` и `/new`. Если пришла «Верификация» — из
    `window.__SSR_DATA__` берутся `action`, `pow.prefix`, `pow.complexity`,
-   брутфорсится nonce, `POST {pow: nonce}` на `action` — сессия получает
-   cookies, дальше обычные GET идут напрямую.
+    брутфорсится nonce, `POST {pow: nonce}` на `action` — сессия получает
+    cookies, дальше обычные GET идут напрямую. Если вместо PoW приходит
+    отдельная SmartCaptcha с `sitekey`, используется 2captcha API v2.
 2. Карточки лент — `article.deal-card`: ID из URL, заголовок, температура,
    цены, картинка.
 3. Новые ID -> страница сделки: JSON-LD (`Article`/`Product`/`WebPage`),
