@@ -124,7 +124,7 @@ class PepperClient:
     def __init__(
         self,
         request_delay: float = 2.0,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
         max_challenge_rounds: int = 4,
         proxy: str | None = None,
         captcha_api_key: str | None = None,
