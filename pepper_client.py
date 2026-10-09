@@ -124,8 +124,20 @@ class PepperClient:
         request_delay: float = 2.0,
         timeout: float = 30.0,
         max_challenge_rounds: int = 4,
+        proxy: str | None = None,
     ) -> None:
         self.session = Session(impersonate="chrome124")
+        if proxy:
+            self.session.proxies = {"https://": proxy, "http://": proxy}
+            log.info("using proxy: %s", proxy)
+        self.session.headers.update({
+            "User-Agent": _UA,
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        })
         self.request_delay = request_delay
         self.timeout = timeout
         self.max_challenge_rounds = max_challenge_rounds
