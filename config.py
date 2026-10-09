@@ -66,6 +66,8 @@ class Config:
     request_delay: float = _env_float("PEPPER_REQUEST_DELAY", 2.0)  # пауза между запросами
     timeout: float = _env_float("PEPPER_TIMEOUT", 30.0)
     proxy: str = os.environ.get("PEPPER_PROXY", "")  # опциональный прокси для доступа к pepper.ru
+    # 2captcha для обхода Yandex SmartCaptcha
+    captcha_api_key: str = os.environ.get("PEPPER_2CAPTCHA_KEY", "")
     # Бот: chat_id админа для демо/диагностики
     tg_admin: str = os.environ.get("PEPPER_TG_ADMIN", "")
     tg_admin_ids: tuple[int, ...] = tuple(

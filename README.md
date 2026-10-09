@@ -84,11 +84,27 @@ cp .env.example .env             # токен бота, chat_id канала, ch
 | `PEPPER_TG_TOKEN`      | —                    | токен бота от @BotFather                    |
 | `PEPPER_TG_CHAT`       | —                    | `@имя_канала` или числовой `-100...`        |
 | `PEPPER_TG_ADMIN`      | —                    | chat_id для демо/диагностики                |
+| `PEPPER_TG_ADMIN_IDS`  | —                    | user ID администраторов (через запятую)     |
 | `PEPPER_INTERVAL`      | `180`                | пауза между циклами парсинга, сек           |
 | `PEPPER_MAX_PER_CYCLE` | `5`                  | лимит постов за цикл (антифлуд)             |
 | `PEPPER_SEED_FIRST`    | `true`               | первый запуск помечает текущее прочитанным  |
 | `PEPPER_DB_PATH`       | `pepper_seen.sqlite3`| файл базы (посты + каталог промокодов)      |
 | `PEPPER_REQUEST_DELAY` | `2.0`                | пауза между HTTP-запросами, сек             |
+| `PEPPER_PROXY`         | —                    | HTTP/HTTPS прокси (optional)                |
+| `PEPPER_2CAPTCHA_KEY`  | —                    | API ключ 2captcha для обхода Yandex капчи   |
+
+### Обход Yandex SmartCaptcha
+
+Если pepper.ru требует капчу (датацентр IP, прокси), добавь `PEPPER_2CAPTCHA_KEY`:
+
+1. Зарегистрируйся на https://2captcha.com
+2. Пополни баланс (~$3 за 1000 капч)
+3. Скопируй API ключ из личного кабинета в `.env`:
+   ```
+   PEPPER_2CAPTCHA_KEY=ваш_ключ_здесь
+   ```
+
+Бот автоматически отправит капчу на решение через 2captcha API и продолжит работу.
 
 Бота добавить в канал администратором с правом публикации.
 

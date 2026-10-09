@@ -35,6 +35,8 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from curl_cffi.requests import Session
 from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
+from captcha_solver import CaptchaSolver, extract_sitekey_from_captcha_page
+
 log = logging.getLogger("pepper.client")
 
 BASE = "https://www.pepper.ru"
@@ -125,6 +127,7 @@ class PepperClient:
         timeout: float = 30.0,
         max_challenge_rounds: int = 4,
         proxy: str | None = None,
+        captcha_api_key: str | None = None,
     ) -> None:
         self.session = Session(impersonate="chrome124")
         if proxy:
@@ -132,16 +135,22 @@ class PepperClient:
             log.info("using proxy: %s", proxy)
         self.session.headers.update({
             "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
             "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Referer": "https://www.pepper.ru/",
         })
         self.request_delay = request_delay
         self.timeout = timeout
         self.max_challenge_rounds = max_challenge_rounds
         self._last_request_ts = 0.0
+        self.captcha_solver = CaptchaSolver(captcha_api_key) if captcha_api_key else None
 
     # ------------------------------------------------------------------ #
     # Сеть
@@ -168,6 +177,18 @@ class PepperClient:
         for _ in range(self.max_challenge_rounds):
             self._throttle()
             r = self.session.get(url, headers=self._headers(), timeout=self.timeout)
+
+            # проверка на Yandex SmartCaptcha (редирект на showcaptcha)
+            if "showcaptcha" in r.url or "x-yandex-captcha" in r.headers:
+                if self.captcha_solver:
+                    log.info("yandex captcha detected, solving via 2captcha")
+                    if self._solve_yandex_captcha(r.text, r.url):
+                        # после решения капчи повторяем запрос
+                        continue
+                else:
+                    log.warning("yandex captcha detected but no 2captcha key configured")
+                    raise PepperBlocked(f"captcha required: {url}")
+
             if _CHALLENGE_MARK not in r.text:
                 return r.text
             html = self._solve_challenge(r.text, referer=url)
@@ -203,6 +224,38 @@ class PepperClient:
             timeout=self.timeout,
         )
         return r.text
+
+    def _solve_yandex_captcha(self, html: str, page_url: str) -> bool:
+        """Решить Yandex SmartCaptcha через 2captcha."""
+        # сохранить HTML для отладки
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, dir='/tmp') as f:
+            f.write(html)
+            log.info("captcha page saved to %s", f.name)
+
+        sitekey = extract_sitekey_from_captcha_page(html, page_url)
+        if not sitekey:
+            log.error("failed to extract sitekey from captcha page")
+            return False
+
+        log.info("extracted sitekey: %s", sitekey)
+        token = self.captcha_solver.solve_yandex_smart(sitekey, BASE)
+        if not token:
+            log.error("failed to solve captcha")
+            return False
+
+        # отправить токен обратно на pepper.ru
+        # обычно это форма или AJAX запрос с токеном
+        # для Yandex SmartCaptcha нужно отправить smart-token в форму или cookie
+        try:
+            # pepper.ru использует cookie spravka после решения капчи
+            # попробуем установить токен как cookie и повторить запрос
+            self.session.cookies.set("smart-token", token, domain=".pepper.ru")
+            log.info("captcha token set, retrying request")
+            return True
+        except Exception as exc:
+            log.error("failed to apply captcha token: %s", exc)
+            return False
 
     # ------------------------------------------------------------------ #
     # Ленты

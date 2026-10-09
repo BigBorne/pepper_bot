@@ -230,7 +230,12 @@ async def main() -> int:
         store.close()
         return 0
 
-    client = PepperClient(request_delay=cfg.request_delay, timeout=cfg.timeout, proxy=cfg.proxy)
+    client = PepperClient(
+        request_delay=cfg.request_delay,
+        timeout=cfg.timeout,
+        proxy=cfg.proxy,
+        captcha_api_key=cfg.captcha_api_key,
+    )
 
     if args.seed:
         cards = client.feed_cards(cfg.feeds)
